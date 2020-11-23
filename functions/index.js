@@ -10,38 +10,49 @@ admin.initializeApp();
 //     functions.logger.info("Hello logs!", { structuredData: true });
 //     response.send("Hello from Firebase!");
 // });
-exports.createNewRoom = functions.https.onCall((data, context) => {
-    var members = [];
-    admin.firestore().collection('users').where("id", "array-contains-any", data.members)
-        .get()
-        .then((query) => {
-            query.forEach((doc) => {
-                const val = doc.data();
-                members.push({
-                    id: val.id,
-                    name: val.name,
-                    email: val.email,
-                    avatar: val.avatar,
-                    is_online: val.is_online
-                });
-            });
-            return null;
-        }).catch(() => null);
+exports.createNewRoom = functions.firestore
+    .document('conversations/{roomId}')
+    .onCreate((snapshot, context) => {
+        const snap = snapshot.data();
+        const roomId = context.params.roomId;
+        var users = [];
+        admin.firestore().collection('users').where("id", "in", snap.members)
+            .get()
+            .then((query) => {
 
-    let val = {
-        id: null,
-        name: data.name,
-        admin: data.admin,
-        description: data.description,
-        image: data.image,
-        private: data.private,
-        type: data.type,
-        members: members,
-        created_at: data.created_at,
-        deleted_at: data.deleted_at
-    };
-    return admin.firestore().collection('conversations').add(val).catch(() => null);
-});
+                query.docs.forEach((doc) => {
+                    const val = doc.data();
+                    admin.firestore().collection('conversations').doc(roomId).collection('members').add({
+                        id: val.id,
+                        name: val.name,
+                        email: val.email,
+                        avatar: val.avatar,
+                        is_online: val.is_online
+                    }).then((value) => null).catch(() => null);
+                    users.push({
+                        id: val.id,
+                        name: val.name,
+                        email: val.email,
+                        avatar: val.avatar,
+                        is_online: val.is_online
+                    });
+
+                    console.log(users);
+
+                });
+
+                if (snap.type == "personal") {
+                    snapshot.ref.update({ users: users }).then((value) => null).catch(() => null);
+                }
+                return null;
+            });
+
+        snapshot.ref.update({ id: roomId }).then((value) => null).catch(() => null);
+
+
+        return null
+    });
+
 exports.setLastMessageRoom = functions.firestore
     .document('conversations/{roomId}/messages/{messageId}')
     .onCreate((snapshot, context) => {
@@ -72,7 +83,7 @@ exports.setLastMessageRoom = functions.firestore
 
         return null;
 
-    }).catch(() => null);
+    });
 
 function sanitizedForProtection(inputText) {
     const re = /test/gi;
@@ -124,11 +135,11 @@ exports.universalUpdateDataUser = functions.firestore
         if (dataAfter) {
             if (dataAfter.name === dataBefore.name &&
                 dataAfter.email === dataBefore.email &&
-                dataAfter.avatar === dataBefore.avatar) {
+                dataAfter.avatar === dataBefore.avatar && dataAfter.is_online === dataBefore.is_online) {
                 console.log("it's same");
                 return null;
             }
-            admin.firestore().collection('conversations').where("members", "array-contains-any", [{
+            admin.firestore().collection('conversations').where("users", "array-contains-any", [{
                     name: dataBefore.name,
                     email: dataBefore.email,
                     id: dataBefore.id,
@@ -143,7 +154,8 @@ exports.universalUpdateDataUser = functions.firestore
                                 name: dataBefore.name,
                                 email: dataBefore.email,
                                 id: dataBefore.id,
-                                avatar: dataBefore.avatar
+                                avatar: dataBefore.avatar,
+                                is_online: dataBefore.is_online
                             })
                         });
 
@@ -152,15 +164,30 @@ exports.universalUpdateDataUser = functions.firestore
                                 name: dataAfter.name,
                                 email: dataAfter.email,
                                 id: dataAfter.id,
-                                avatar: dataAfter.avatar
+                                avatar: dataAfter.avatar,
+                                is_online: dataBefore.is_online
                             })
                         })
                     });
                     return null;
                 }).catch(() => null);
+            admin.firestore().collection('locations').where('id', '==', dataAfter.id)
+                .get()
+                .then((query) => {
+                    query.forEach((value) => {
+                        value.ref.update({
+                            name: dataAfter.name,
+                            email: dataAfter.email,
+                            id: dataAfter.id,
+                            avatar: dataAfter.avatar,
+                            is_online: dataBefore.is_online
+                        });
+                    });
+                    return null;
+                });
             // return change.after.ref.update({ email: "emu@gmail.com" });
             return null;
         } else {
             return null;
         }
-    }).catch(() => null);
+    });
