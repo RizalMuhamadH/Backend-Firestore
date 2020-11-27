@@ -16,36 +16,39 @@ exports.createNewRoom = functions.firestore
         const snap = snapshot.data();
         const roomId = context.params.roomId;
         var users = [];
-        admin.firestore().collection('users').where("id", "in", snap.members)
-            .get()
-            .then((query) => {
 
-                query.docs.forEach((doc) => {
-                    const val = doc.data();
-                    admin.firestore().collection('conversations').doc(roomId).collection('members').add({
-                        id: val.id,
-                        name: val.name,
-                        email: val.email,
-                        avatar: val.avatar,
-                        is_online: val.is_online
-                    }).then((value) => null).catch(() => null);
-                    users.push({
-                        id: val.id,
-                        name: val.name,
-                        email: val.email,
-                        avatar: val.avatar,
-                        is_online: val.is_online
+        if (snap.type == "personal") {
+            admin.firestore().collection('users').where("id", "in", snap.members)
+                .get()
+                .then((query) => {
+
+                    query.docs.forEach((doc) => {
+                        const val = doc.data();
+                        // admin.firestore().collection('conversations').doc(roomId).collection('members').add({
+                        //     id: val.id,
+                        //     name: val.name,
+                        //     email: val.email,
+                        //     avatar: val.avatar,
+                        //     is_online: val.is_online,
+                        //     last_active: val.last_active
+                        // }).then((value) => null).catch(() => null);
+                        users.push({
+                            id: val.id,
+                            name: val.name,
+                            email: val.email,
+                            avatar: val.avatar,
+                            is_online: val.is_online,
+                            last_active: val.last_active
+                        });
+
+                        console.log(users);
+
                     });
 
-                    console.log(users);
-
-                });
-
-                if (snap.type == "personal") {
                     snapshot.ref.update({ users: users }).then((value) => null).catch(() => null);
-                }
-                return null;
-            });
+                    return null;
+                });
+        }
 
         snapshot.ref.update({ id: roomId }).then((value) => null).catch(() => null);
 
@@ -65,7 +68,7 @@ exports.setLastMessageRoom = functions.firestore
             .get()
             .then((doc) => {
                 doc.ref.update({
-                    lastMessage: {
+                    last_message: {
                         id: messageId,
                         body: snap.body,
                         type: snap.type,
@@ -76,8 +79,27 @@ exports.setLastMessageRoom = functions.firestore
                         is_read: snap.is_read
                     }
                 });
+                if (doc.data().type != "personal") {
+                    admin.firestore().collection('users').where("id", "==", snap.sender)
+                        .get()
+                        .then((value) => {
+                            const val = value.data();
+                            doc.ref.update({
+                                users: [{
+                                    id: val.id,
+                                    name: val.name,
+                                    email: val.email,
+                                    avatar: val.avatar,
+                                    is_online: val.is_online,
+                                    last_active: val.last_active
+                                }]
+                            });
+                        }).catch(() => null);
+                }
                 return null
             }).catch(() => null);
+
+
 
         snapshot.ref.update({ id: messageId }).catch(() => null);
 
@@ -105,9 +127,9 @@ exports.updateLastMessageRoom = functions.firestore
             .get()
             .then((doc) => {
                 const val = doc.data();
-                if (val.lastMessage.id === after.id) {
+                if (val.last_message.id === after.id) {
                     doc.ref.update({
-                        lastMessage: {
+                        last_message: {
                             id: messageId,
                             body: after.body,
                             type: after.type,
